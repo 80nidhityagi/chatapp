@@ -5,82 +5,87 @@ const cloudinary = require('cloudinary').v2
 
 
 const signup = async function (req, res) {
-  console.log(req.file);
   const name = req.body.name;
   const email = req.body.email;
   const password = req.body.password;
   const entry = await User.find({ email: email })
-  if (entry.length > 0) {
+  if (entry.length>0) {
     res.send({ succes: false, message: "user is present already", data: '' })
   }
   else {
-
+    const user = await User.findOne({name:name})
+    if(user){
+      res.send({succes:false ,message:"user name is exist already please change your name"})
+    }
+else{
     let saltroud = 10;
     let newpassword = await bycrypt.hash(password, saltroud)
-
-    console.log("teen line se phele");
-
-
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 
-  try {
-    if(req.file){
-      const upload = await cloudinary.uploader.upload(req.file.path)  //image ko clondinary me ulpdad krna 
-      console.log(upload.public_id, 'upload.publicId');
+    try {
+      if (req.file) {
+        const upload = await cloudinary.uploader.upload(req.file.path)  //image ko clondinary me ulpdad krna 
+        // console.log(upload.public_id, 'upload.publicId');
 
-      console.log('cloudinary ke teen line ke baad');
+        await User.create({
+          name: name,
+          email: email,
+          password: newpassword,
+          ProfileDetail: {
+            profilePhoto: upload.secure_url,
+            publicId: upload.public_id
+          }
+        })
+      }
+      else {
+        await User.create({
+          name: name,
+          email: email,
+          password: newpassword,
+          ProfileDetail: {
+            profilePhoto: null,
+            publicId: null
+          }
+        })
 
-      let user = await User.create({
-        name: name,
-        email: email,
-        password: newpassword,
-        ProfileDetail: {
-          profilePhoto: upload.secure_url,
-          publicId: upload.public_id
-        }
-      })
-    }
-    else{
-      let user = await User.create({
-        name: name,
-        email: email,
-        password: newpassword,
-        ProfileDetail:{
-          profilePhoto:null,
-          publicId:null
-        }
-      })
-
-    }
+      }
 
       let token = jwt.sign({ email }, process.env.SECRET_KEY, { expiresIn: '5m' })
       res.send({ succes: true, message: "user created succesfully", token: token })
     }
-    catch (e) {
-      console.log(e);
+    catch (err) {
+      console.log(err);
 
     }
   }
+}
 
 }
 const login = async (req, res) => {
+  console.log("inside login ");
+  
 
   const email = req.body.email;
   const password = req.body.password;
+  console.log(email);
+  console.log(password);
+  
+  
   const user = await User.findOne({ email: email })
+  console.log(user);
+  
   if (!user) {
     res.send({ succes: false, message: "email or password is not correct" })
   }
   else {
-    console.log("secret key",process.env.SECRET_KEY);
-    
+
     bycrypt.compare(password, user.password, (err, result) => {
       if (result) {
-        const token = jwt.sign({ email:user.email }, process.env.SECRET_KEY, {
+        const token = jwt.sign({ email: user.email }, process.env.SECRET_KEY, {
           expiresIn: '5m' // Token expires in 5 min
 
 
@@ -91,16 +96,8 @@ const login = async (req, res) => {
         res.send({ succes: false, message: "email or password is not correct" })
       }
     })
-
-
-
-
   }
-
-
 }
-
-
 // Middleware to verify the token
 const SECRET_KEY = process.env.SECRET_KEY;
 
@@ -119,7 +116,6 @@ const verifyToken = (req, res, next) => {
         // Redirect or handle expired token case
         return res.status(401).json({ message: 'Session expired, please log in again' });
       }
-      // Handle other errors
       return res.status(401).json({ message: 'Invalid Token' });
     }
     // Token is valid, add user info from decoded token to the request object
@@ -127,8 +123,6 @@ const verifyToken = (req, res, next) => {
     next();
   });
 };
-
-// Example protected route
 
 async function allUsers(req, res) {
 
@@ -138,15 +132,9 @@ async function allUsers(req, res) {
 
 async function getUserName(req, res) {
   try {
-    console.log("inside try");
 
     let id = req.params.id;
-    console.log(id);
-
     let user = await User.findOne({ _id: id });
-    // let name = user.name;
-    console.log(user);
-
     res.send({ success: true, data: user });
   } catch (err) {
     res.send({ success: false });
@@ -155,48 +143,45 @@ async function getUserName(req, res) {
 }
 async function editUser(req, res) {
 
-  try{
+  try {
 
-  let id = req.params.id;
-  let name = req.body.name;
-  let email = req.body.email;
+    let id = req.params.id;
+    let name = req.body.name;
+    let email = req.body.email;
 
-  let user = await User.findOne({ _id: id })
+    let user = await User.findOne({ _id: id })
 
-  if (req.file) {
-    cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,   
-    });
-    const newImagePath = req.file.path;
+    if (req.file) {
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+      });
+      if (user.ProfileDetail.publicId) {
 
-    if(user.ProfileDetail.publicId){
+        // // Replace the old image by using the same public ID
+        const result = await cloudinary.uploader.upload(newImagePath, {
+          public_id: user.ProfileDetail.publicId, // Replace 'sample' with the public ID of the existing image
+          overwrite: true,     // Ensure the old file is overwritten
+        })
+        // console.log('Image successfully replaced:', result.secure_url);
+        user.ProfileDetail.profilePhoto = result.secure_url;
+      }
+      else {
 
-      // // Replace the old image by using the same public ID
-      const result = await cloudinary.uploader.upload(newImagePath, {
-        public_id: user.ProfileDetail.publicId, // Replace 'sample' with the public ID of the existing image
-        overwrite: true,     // Ensure the old file is overwritten
-      })
-      console.log('Image successfully replaced:', result.secure_url);
-      user.ProfileDetail.profilePhoto = result.secure_url;
+        const upload = await cloudinary.uploader.upload(newImagePath);
+        user.ProfileDetail.publicId = upload.public_id;
+        user.ProfileDetail.profilePhoto = upload.secure_url
+        //  console.log("image upload done");
+
+      }
     }
-    else{
-      console.log("inside else");
-      
-     const upload = await cloudinary.uploader.upload(newImagePath);
-     user.ProfileDetail.publicId = upload.public_id;
-     user.ProfileDetail.profilePhoto = upload.secure_url
-     console.log("image upload done");
-     
-    }
-  }
     user.name = name;
     user.email = email;
     let u = await user.save()
     res.send({ succes: true, data: u })
-  } catch (e) {
-    console.log(e);
+  } catch (err) {
+    console.log(err);
   }
 
 }

@@ -9,10 +9,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 require('dotenv').config();
-
 const app = express();
-
-// Middleware
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json()); // Parse JSON request bodies
 
